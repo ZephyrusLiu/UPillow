@@ -1,0 +1,1 @@
+python -m src.realtime.stream_infer --mode serial --port COM4 --baud 115200 --channels 2 --window_len 3000 --step 0.5 --ckpt models/ckpts/chbmit_cnn_multi_best.pt --n_classes 2 --labels non-seizure,seizure --vote_k 5

@@ -1,0 +1,1 @@
+python -m src.realtime.stream_infer --mode ble --ble_address XX:XX:XX:XX:XX:XX --ble_char 0000ffe1-0000-1000-8000-00805f9b34fb --channels 2 --window_len 3000 --step 0.5 --ckpt models/ckpts/chbmit_cnn_multi_best.pt --n_classes 2 --labels non-seizure,seizure --vote_k 5
