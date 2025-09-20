@@ -134,6 +134,21 @@ Through this prototype’s concept and realization, UPillow aims to go beyond be
 
 ## Dataset Setup
 
+You can download all required public datasets automatically:
+
+```bash
+# Fetch Sleep Cassette, Sleep Telemetry, and CHB-MIT into the paths defined in config.yaml
+bash scripts/00_download_datasets.sh
+
+# Download a specific subset only (examples)
+python -m src.data.download_datasets --sleep-cassette
+python -m src.data.download_datasets --sleep-telemetry
+python -m src.data.download_datasets --chb-mit
+```
+
+The script uses the `sleep_edf.raw_dir` and `chb_mit.raw_dir` entries from `config.yaml` and keeps the official folder
+hierarchy provided by PhysioNet. Manual download is still supported:
+
 1. **Sleep-EDF Expanded**
    * Download from [PhysioNet](https://physionet.org/content/sleep-edfx/1.0.0/) (requires free PhysioNet account)
    * Place EDF and hypnogram files in `data/sleep-edf/`
@@ -144,6 +159,32 @@ Through this prototype’s concept and realization, UPillow aims to go beyond be
 
 3. **OpenBCI Signals**
    * Place `.txt` (OpenBCI GUI RAW) or `.csv` (BrainFlow) files in the project root or `data/openbci/`
+
+---
+
+## Syncing Changes with GitHub
+
+The repository includes a helper for pushing local commits to GitHub and
+fast-forwarding the current branch with the latest remote changes. It assumes you
+have configured a remote (for example `origin`) and that your Git credential
+helper can authenticate with GitHub (SSH keys or HTTPS token).
+
+```bash
+# Push the current branch to origin (use --set-upstream the first time)
+bash scripts/99_git_sync.sh push --set-upstream
+
+# Pull the latest commits from origin for the current branch
+bash scripts/99_git_sync.sh pull
+
+# Target a specific branch/remote if needed
+bash scripts/99_git_sync.sh push --remote origin --branch main
+bash scripts/99_git_sync.sh pull --remote upstream --branch develop
+```
+
+Behind the scenes the helper runs `git push` and `git pull --ff-only`, surfacing
+errors such as authentication failures or non-fast-forward situations with clear
+messages. You can still use standard Git commands directly; the helper simply
+provides a consistent interface alongside the other project scripts.
 
 ---
 
