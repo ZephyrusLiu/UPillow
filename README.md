@@ -188,6 +188,32 @@ provides a consistent interface alongside the other project scripts.
 
 ---
 
+## Syncing Changes with GitHub
+
+The repository includes a helper for pushing local commits to GitHub and
+fast-forwarding the current branch with the latest remote changes. It assumes you
+have configured a remote (for example `origin`) and that your Git credential
+helper can authenticate with GitHub (SSH keys or HTTPS token).
+
+```bash
+# Push the current branch to origin (use --set-upstream the first time)
+bash scripts/99_git_sync.sh push --set-upstream
+
+# Pull the latest commits from origin for the current branch
+bash scripts/99_git_sync.sh pull
+
+# Target a specific branch/remote if needed
+bash scripts/99_git_sync.sh push --remote origin --branch main
+bash scripts/99_git_sync.sh pull --remote upstream --branch develop
+```
+
+Behind the scenes the helper runs `git push` and `git pull --ff-only`, surfacing
+errors such as authentication failures or non-fast-forward situations with clear
+messages. You can still use standard Git commands directly; the helper simply
+provides a consistent interface alongside the other project scripts.
+
+---
+
 ## Running the Pipeline
 
 ### 1. Preprocess Data
