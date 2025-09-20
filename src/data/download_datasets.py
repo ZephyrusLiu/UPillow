@@ -1,10 +1,12 @@
 import argparse
 import sys
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable
 
 import yaml
 import wfdb
+from mne.datasets.sleep_physionet import age, temazepam
+
 
 def _load_config(path: str) -> dict:
     with open(path, "r", encoding="utf-8") as f:
@@ -15,38 +17,52 @@ def _ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
-def _filter_records(records: Iterable[str], prefix: str) -> List[str]:
-    pref = prefix.rstrip("/") + "/"
-    return [r for r in records if r.startswith(pref)]
-
-
-def _download_records(db: str, destination: Path, records: List[str]) -> None:
+def _download_wfdb_files(db: str, destination: Path, records: Iterable[str]) -> None:
+    records = list(records)
     if not records:
         raise RuntimeError(f"No records matched for '{db}' with the provided filters.")
 
     _ensure_dir(destination)
     print(f"Downloading {len(records)} records from '{db}' into '{destination}'.")
-    wfdb.dl_database(db, dl_dir=str(destination), records=records, keep_subdirs=True)
+    wfdb.dl_files(db, dl_dir=str(destination), files=records, keep_subdirs=True)
 
 
 def download_sleep_edf(subset: str, destination: Path) -> None:
+    _ensure_dir(destination)
     try:
-        records = wfdb.get_record_list("sleep-edfx")
+        if subset == "cassette":
+            # All publicly released subjects excluding the documented gaps.
+            subjects = [
+                s
+                for s in range(83)
+                if s not in {39, 68, 69, 78, 79}
+            ]
+            pairs = age.fetch_data(
+                subjects=subjects,
+                recording=(1, 2),
+                path=str(destination),
+                force_update=False,
+                on_missing="ignore",
+                verbose="ERROR",
+            )
+        else:
+            # Placebo nights from the temazepam (Sleep Telemetry) study.
+            pairs = temazepam.fetch_data(
+                subjects=list(range(22)),
+                path=str(destination),
+                force_update=False,
+                verbose="ERROR",
+            )
     except Exception as exc:  # pragma: no cover - network failure path
         raise RuntimeError(
-            "Unable to query record list from PhysioNet for sleep-edfx. "
-            "Please ensure you have network access and, if required, have "
-            "authenticated with PhysioNet."
+            "MNE could not fetch the requested Sleep-EDF subset. "
+            "Ensure you accepted the dataset license and have network access."
         ) from exc
 
-    prefix = "sleep-cassette" if subset == "cassette" else "sleep-telemetry"
-    subset_records = _filter_records(records, prefix)
-    if not subset_records:
-        raise RuntimeError(
-            f"PhysioNet record list for sleep-edfx did not contain entries under '{prefix}'."
-        )
-
-    _download_records("sleep-edfx", destination, subset_records)
+    total = sum(len(p) for p in pairs)
+    print(
+        f"Downloaded {len(pairs)} recordings ({total} files) for Sleep-EDF {subset}."
+    )
 
 
 def download_chb_mit(destination: Path) -> None:
@@ -58,7 +74,7 @@ def download_chb_mit(destination: Path) -> None:
             "Please ensure you have network access and access permissions."
         ) from exc
 
-    _download_records("chbmit", destination, records)
+    _download_wfdb_files("chbmit", destination, records)
 
 
 def parse_args() -> argparse.Namespace:
