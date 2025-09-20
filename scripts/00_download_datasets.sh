@@ -1,0 +1,1 @@
+python -m src.data.download_datasets "$@"
