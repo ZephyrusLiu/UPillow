@@ -1,0 +1,49 @@
+# Global configuration for UPillow rebuild
+data_root: data
+
+sleep_edf:
+  # raw_dir: data/sleep-edf
+  # processed_dir: data/processed/sleep-edf
+  raw_dir: demo
+  processed_dir: demo/processed
+  eeg_channel_preference: ["Fpz-Cz", "EEG Fpz-Cz", "C3-A2", "EEG"]  # fallbacks
+  sample_rate: 100
+  epoch_sec: 30
+  bandpass: [0.3, 35.0]
+  notch_hz: 50   # change to 60 if US mains noise dominates
+  label_map:      # map EDF annotations to AASM classes
+    W: ["W", "Wake"]
+    N1: ["1", "N1"]
+    N2: ["2", "N2"]
+    N3: ["3", "4", "N3"]
+    REM: ["R", "REM"]
+
+training:
+  random_state: 42
+  test_subject_frac: 0.2  # for simple split; LOSO is also supported
+  batch_size: 64
+  epochs: 20
+  lr: 1e-3
+
+seizure:
+  synthetic:
+    prob_seizure_window: 0.1
+    burst_hz: 3.0
+    burst_amp: 4.0
+    burst_sec: 5.0
+  rule_based:
+    energy_win_sec: 1.0
+    energy_thresh_std: 3.0
+    band_3_4_ratio_thresh: 2.0
+
+
+chb_mit:
+  raw_dir: data/chb-mit
+  processed_dir: data/processed/chb-mit
+  eeg_channel_preference: ["EEG", "FP1-F7", "FP1-F3", "C3-P3", "CZ-PZ"]  # flexible fallback
+  sample_rate: 200       # CHB-MIT often 256 Hz; downsample to 200 for speed
+  window_sec: 2          # seizure detection uses short windows
+  bandpass: [0.5, 40.0]
+  notch_hz: 60
+  overlap_sec: 0.5       # label a window as seizure if overlap >= 0.5s with seizure interval
+  patient_holdout_frac: 0.2
