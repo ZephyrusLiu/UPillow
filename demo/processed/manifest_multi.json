@@ -1,1 +1,11 @@
-[]
+[
+  {
+    "file": "SC4001E0-PSG",
+    "n": 2650,
+    "chs": [
+      "EEG Fpz-Cz",
+      "EEG Pz-Oz"
+    ],
+    "fs": 100
+  }
+]

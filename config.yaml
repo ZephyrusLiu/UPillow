@@ -2,10 +2,10 @@
 data_root: data
 
 sleep_edf:
-  # raw_dir: data/sleep-edf
-  # processed_dir: data/processed/sleep-edf
-  raw_dir: demo
-  processed_dir: demo/processed
+  raw_dir: data/sleep-edf
+  processed_dir: data/processed/sleep-edf
+  # raw_dir: demo
+  # processed_dir: demo/processed
   eeg_channel_preference: ["Fpz-Cz", "EEG Fpz-Cz", "C3-A2", "EEG"]  # fallbacks
   sample_rate: 100
   epoch_sec: 30

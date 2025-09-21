@@ -84,7 +84,7 @@ def extract_epochs_multi(eeg_path: str, hyp_path: str, cfg: Dict, sid: str):
 
     # annotations
     if hyp_path and os.path.exists(hyp_path):
-        ann = mne.read_annotations(hyp_path, verbose=False)
+        ann = mne.read_annotations(hyp_path)
         raw.set_annotations(ann, emit_warning=False)
         ann = raw.annotations
     else:
