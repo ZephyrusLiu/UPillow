@@ -1,6 +1,7 @@
 import os
 import re
 import glob
+from difflib import SequenceMatcher
 import numpy as np
 import mne
 from scipy.signal import iirnotch, filtfilt, butter, resample
@@ -57,25 +58,37 @@ def load_sleepedf_subjects(raw_dir: str) -> Dict[str, Dict[str, str]]:
     """
     pairs = {}
     edfs = glob.glob(os.path.join(raw_dir, "**", "*.edf"), recursive=True)
-    # naive pairing by filename stems
+    hypnograms = [p for p in edfs if "hypnogram" in os.path.basename(p).lower()]
     for e in edfs:
         name = os.path.basename(e)
-        if "Hypnogram" in name or "hypnogram" in name:
+        if "hypnogram" in name.lower():
             continue
+
         stem = re.sub(r"\.edf$", "", name, flags=re.I)
-        # try to find hypnogram in same folder
-        hyp = None
-        for h in edfs:
-            if h == e: 
-                continue
-            hn = os.path.basename(h)
-            if "Hypnogram" in hn and stem.split("-")[0] in hn:
-                hyp = h
-                break
-        if hyp is None:
-            # also consider hypnogram stored as annotations inside recording
-            hyp = ""  # empty means: use annotations from same file if present
         sid = stem.split("-")[0]
+
+        # find the best matching hypnogram file
+        hyp = ""
+        best_score = 0.0
+        eeg_key = sid.lower()
+
+        # prefer hypnograms stored alongside the EEG recording
+        same_dir_hyps = [h for h in hypnograms if os.path.dirname(h) == os.path.dirname(e)]
+        candidates = same_dir_hyps if same_dir_hyps else hypnograms
+
+        for h in candidates:
+            h_name = os.path.basename(h)
+            h_key = re.sub(r"\.edf$", "", h_name, flags=re.I).split("-")[0].lower()
+            score = SequenceMatcher(None, eeg_key, h_key).ratio()
+            if score > best_score:
+                best_score = score
+                hyp = h
+
+        # if no sufficiently similar hypnogram is found, fall back to using
+        # annotations embedded in the EEG recording (if any)
+        if best_score < 0.5:
+            hyp = ""
+
         pairs[sid] = {"eeg": e, "hyp": hyp}
     return pairs
 
