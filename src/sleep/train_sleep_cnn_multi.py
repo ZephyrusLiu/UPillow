@@ -46,7 +46,8 @@ if __name__ == "__main__":
     in_len = Xtr.shape[-1]; in_ch = Xtr.shape[1]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = TinySleepCNNMulti(n_classes=5, in_len=in_len, in_ch=in_ch).to(device)
-    opt = torch.optim.Adam(model.parameters(), lr=cfg["training"]["lr"])
+    lr = float(cfg["training"]["lr"])
+    opt = torch.optim.Adam(model.parameters(), lr=lr)
     crit = torch.nn.CrossEntropyLoss()
 
     dl_tr = DataLoader(NPZMulti(Xtr,ytr), batch_size=cfg["training"]["batch_size"], shuffle=True)
