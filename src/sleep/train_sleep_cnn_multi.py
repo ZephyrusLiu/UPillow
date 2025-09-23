@@ -1,7 +1,9 @@
-import os, glob, yaml, numpy as np, torch
+import os
+import yaml, numpy as np, torch
 from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import accuracy_score, f1_score, cohen_kappa_score
 from src.models.cnn_1d_multi import TinySleepCNNMulti
+from src.sleep.data_utils import load_sleepedf_multi_npz
 from src.data.sleepedf_multi import extract_epochs_multi
 import mne
 
@@ -14,23 +16,11 @@ class NPZMulti(Dataset):
         import torch
         return torch.from_numpy(self.X[idx]), torch.tensor(self.y[idx])
 
-def load_sleepedf_multi(processed_dir):
-    files = sorted(glob.glob(os.path.join(processed_dir, "*.npz")))
-    data = []
-    for f in files:
-        if "manifest" in f: continue
-        npz = np.load(f, allow_pickle=True)
-        X = npz["X"]; y = npz["y"]
-        if X.ndim == 2:  # single-channel fallback
-            X = X[:,None,:]
-        data.append((os.path.basename(f), X, y))
-    return data
-
 if __name__ == "__main__":
     with open("config.yaml","r") as f:
         cfg = yaml.safe_load(f)
     pdir = cfg["sleep_edf"]["processed_dir"]
-    data = load_sleepedf_multi(pdir)
+    data = load_sleepedf_multi_npz(pdir)
     if not data:
         raise SystemExit("Please run sleepedf preprocessing (single or multi) first.")
     # subject-wise split by file

@@ -209,6 +209,8 @@ Training uses subject-wise splits to avoid data leakage, with metrics including 
 ```bash
 # RandomForest for sleep staging (leave-one-subject-out CV)
 bash scripts/02_train_sleep_rf.sh
+# Multi-channel RandomForest for sleep staging
+bash scripts/09_train_sleep_rf_multi.sh
 # 1D-CNN for sleep staging (single-channel)
 bash scripts/03_train_sleep_cnn.sh
 # Multi-channel CNN for sleep staging
@@ -221,6 +223,7 @@ bash scripts/08_train_chbmit_cnn_multi.sh
 Evaluate sleep staging models with confusion matrices and detailed metrics.
 ```bash
 bash scripts/04_eval_sleep.sh
+bash scripts/14_eval_sleep_multi.sh
 ```
 
 ### 4. Synthetic Seizure Simulation
