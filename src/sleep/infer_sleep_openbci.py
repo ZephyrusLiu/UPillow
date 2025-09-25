@@ -1,4 +1,4 @@
-import argparse, torch, numpy as np
+import argparse, json, torch, numpy as np
 from src.models.cnn_1d_multi import TinySleepCNNMulti
 from src.data.openbci16 import prepare_openbci_npz
 
@@ -10,10 +10,20 @@ def main():
     ap.add_argument("--fs", type=float, default=100.0)
     ap.add_argument("--epoch", type=float, default=30.0)
     ap.add_argument("--labels", default="W,N1,N2,N3,REM")
+    ap.add_argument("--virtual-map", help="Path to JSON defining virtual bipolar channels")
+    ap.add_argument("--disable-car", action="store_true", help="Skip CAR re-referencing before virtual mapping")
     args = ap.parse_args()
 
+    virtual_map = None
+    if args.virtual_map:
+        with open(args.virtual_map, 'r', encoding='utf-8') as f:
+            virtual_map = json.load(f)
+        if isinstance(virtual_map, dict):
+            # allow {"channels": [...]} style wrappers
+            virtual_map = virtual_map.get('channels', virtual_map.get('virtual_map', virtual_map))
     info = prepare_openbci_npz(args.input, "tmp_openbci_sleep.npz",
-                               task="sleep", sleep_fs=args.fs, sleep_win=args.epoch)
+                               task="sleep", sleep_fs=args.fs, sleep_win=args.epoch,
+                               use_car=not args.disable_car, virtual_map=virtual_map)
     npz = np.load("tmp_openbci_sleep.npz", allow_pickle=True)
     X = npz["X"]  # (N,C,T)
     in_ch = X.shape[1]; in_len = X.shape[2]

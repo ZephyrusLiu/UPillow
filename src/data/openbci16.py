@@ -1,7 +1,7 @@
 import os, re, csv, json
 import numpy as np
 from scipy.signal import butter, filtfilt, iirnotch, resample
-from typing import Tuple, Dict, Any, Optional
+from typing import Tuple, Dict, Any, Optional, List, Sequence
 
 OPENBCI_SAT_VALS = set([
     -187500.02235174447, -93750.01117587223, -8388608, 8388607
@@ -132,7 +132,8 @@ def _interp_nans(x: np.ndarray) -> np.ndarray:
     return x
 
 def clean_openbci_signals(X: np.ndarray, fs: float, band=(0.5, 40.0), notch_hz=60.0,
-                          saturations=OPENBCI_SAT_VALS, clip_uV=5000.0, use_car=True):
+                          saturations=OPENBCI_SAT_VALS, clip_uV=5000.0, use_car=True,
+                          return_pre_zscore: bool = False):
     """Clean 16-ch OpenBCI EEG.
     Steps:
       - Replace saturations and extreme outliers (|x| > clip_uV * 1e-6?) with NaN, then interpolate
@@ -159,8 +160,11 @@ def clean_openbci_signals(X: np.ndarray, fs: float, band=(0.5, 40.0), notch_hz=6
     X = _apply_notch(X, fs, notch_hz)
     if use_car and X.shape[0] >= 2:
         X = _car(X)
+    pre_z = X.copy()
     # z-score per channel
     X = (X - X.mean(axis=1, keepdims=True)) / (X.std(axis=1, keepdims=True) + 1e-8)
+    if return_pre_zscore:
+        return X, pre_z
     return X
 
 def resample_to(X: np.ndarray, fs_in: float, fs_out: float) -> Tuple[np.ndarray, float]:
@@ -183,20 +187,125 @@ def slice_windows(X: np.ndarray, fs: float, win_sec: float, hop_sec: Optional[fl
         return np.zeros((0, X.shape[0], int(win_sec*fs)), dtype=np.float32)
     return np.stack(out, axis=0)
 
+def _resolve_indices(names: Sequence[str], items: Sequence[Any]) -> List[int]:
+    """Resolve a list of channel identifiers (name or index) to index positions."""
+    idx = {str(n): i for i, n in enumerate(names)}
+    resolved: List[int] = []
+    for it in items:
+        if isinstance(it, (int, np.integer)):
+            if 0 <= int(it) < len(names):
+                resolved.append(int(it))
+        else:
+            key = str(it)
+            if key in idx:
+                resolved.append(idx[key])
+    return resolved
+
+
+def build_virtual_channels(X: np.ndarray,
+                           channel_names: Sequence[str],
+                           virtual_map: Sequence[Dict[str, Any]]) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """Construct virtual bipolar channels via quality-weighted averaging.
+
+    Parameters
+    ----------
+    X : np.ndarray
+        Array of shape (C, T) containing cleaned (pre z-score) signals.
+    channel_names : list-like
+        Names corresponding to each row of ``X``.
+    virtual_map : sequence of dicts
+        Each dict should contain ``pos`` and ``neg`` lists specifying which
+        channels contribute to the positive and negative poles. Optional keys:
+        ``name`` (virtual channel label) and ``min_channels`` (minimum number of
+        available contributors before the channel is considered valid).
+
+    Returns
+    -------
+    Tuple[np.ndarray, Dict[str, Any]]
+        The stacked virtual channels (V, T) and a metadata dictionary capturing
+        the weights used for each contributor.
+    """
+    if not virtual_map:
+        raise ValueError("virtual_map must contain at least one channel definition")
+
+    ch_names = list(channel_names)
+    quality = np.nanstd(X, axis=1)
+    quality = np.where(np.isfinite(quality), quality, 0.0)
+
+    virtual_signals: List[np.ndarray] = []
+    weight_meta: Dict[str, Any] = {}
+
+    for i, spec in enumerate(virtual_map):
+        pos_items = spec.get('pos', [])
+        neg_items = spec.get('neg', [])
+        pos_idx = _resolve_indices(ch_names, pos_items)
+        neg_idx = _resolve_indices(ch_names, neg_items)
+        min_required = int(spec.get('min_channels', 1))
+        if len(pos_idx) < min_required or len(neg_idx) < min_required:
+            raise ValueError(f"Virtual channel {spec.get('name', i)} missing required contributors")
+
+        pos_q = quality[pos_idx]
+        neg_q = quality[neg_idx]
+        if pos_q.sum() <= 0:
+            pos_w = np.ones(len(pos_idx)) / len(pos_idx)
+        else:
+            pos_w = pos_q / pos_q.sum()
+        if neg_q.sum() <= 0:
+            neg_w = np.ones(len(neg_idx)) / len(neg_idx)
+        else:
+            neg_w = neg_q / neg_q.sum()
+
+        pos_sig = np.sum(X[pos_idx] * pos_w[:, None], axis=0)
+        neg_sig = np.sum(X[neg_idx] * neg_w[:, None], axis=0)
+        virt = pos_sig - neg_sig
+        # final z-score for stability
+        virt = virt - np.mean(virt)
+        std = np.std(virt)
+        virt = virt / (std + 1e-8)
+        virtual_signals.append(virt.astype(np.float32))
+
+        label = spec.get('name', f'virtual_{i}')
+        weight_meta[label] = {
+            'pos': {ch_names[j]: float(pos_w[k]) for k, j in enumerate(pos_idx)},
+            'neg': {ch_names[j]: float(neg_w[k]) for k, j in enumerate(neg_idx)}
+        }
+
+    V = np.stack(virtual_signals, axis=0)
+    return V, weight_meta
+
+
 def prepare_openbci_npz(in_path: str, out_npz: str,
                         task: str = "sleep",
                         sleep_fs=100.0, sleep_win=30.0,
                         seiz_fs=200.0, seiz_win=2.0, seiz_hop=0.5,
-                        band=(0.5, 40.0), notch_hz=60.0, use_car=True) -> Dict[str, Any]:
+                        band=(0.5, 40.0), notch_hz=60.0, use_car=True,
+                        virtual_map: Optional[Sequence[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Convert a single OpenBCI recording to model-ready NPZ for either 'sleep' or 'seizure' inference.
+
+    When ``virtual_map`` is supplied, each entry defines a bipolar combination of
+    channels ("pos" minus "neg") so that multi-channel pillow arrays can be
+    projected onto two-channel layouts compatible with pretrained Sleep-EDF
+    models. Channel identifiers may be integers (indices) or strings matching the
+    names parsed from the OpenBCI header.
     """
     X, fs, meta = read_openbci_any(in_path)
-    X = clean_openbci_signals(X, fs, band=band, notch_hz=notch_hz, use_car=use_car)
+    if virtual_map:
+        _, pre_z = clean_openbci_signals(X, fs, band=band, notch_hz=notch_hz,
+                                         use_car=use_car, return_pre_zscore=True)
+        virt, weight_meta = build_virtual_channels(pre_z, meta.get('channel_names', []), virtual_map)
+        X_proc = virt
+        meta = meta.copy()
+        meta['virtual_map'] = weight_meta
+        meta['source_channel_names'] = meta.get('channel_names', [])
+        meta['channel_names'] = [spec.get('name', f'virtual_{i}') for i, spec in enumerate(virtual_map)]
+    else:
+        X_proc = clean_openbci_signals(X, fs, band=band, notch_hz=notch_hz, use_car=use_car)
+    base = X_proc
     if task == "sleep":
-        Xr, fr = resample_to(X, fs, sleep_fs)
+        Xr, fr = resample_to(base, fs, sleep_fs)
         W = slice_windows(Xr, fr, win_sec=sleep_win)
     else:
-        Xr, fr = resample_to(X, fs, seiz_fs)
+        Xr, fr = resample_to(base, fs, seiz_fs)
         W = slice_windows(Xr, fr, win_sec=seiz_win, hop_sec=seiz_hop)
     np.savez_compressed(out_npz, X=W, fs=fr, meta=meta, channels=meta.get('channel_names'))
     return {'n_windows': int(W.shape[0]), 'fs_out': fr, 'n_ch': int(W.shape[1])}
