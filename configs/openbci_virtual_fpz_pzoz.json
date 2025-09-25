@@ -1,0 +1,16 @@
+{
+  "channels": [
+    {
+      "name": "virtual_fpz_cz",
+      "pos": ["Fpz", "Fp1", "Fp2", "AFz", "EXG0", "EXG1", 0, 1],
+      "neg": ["Cz", "CPz", "C3", "C4", "EXG6", "EXG7", "EXG13", 6, 7, 13],
+      "min_channels": 1
+    },
+    {
+      "name": "virtual_pz_oz",
+      "pos": ["Pz", "P3", "P4", "EXG8", "EXG9", "EXG14", 8, 9, 14],
+      "neg": ["Oz", "O1", "O2", "EXG10", "EXG11", "EXG15", 10, 11, 15],
+      "min_channels": 1
+    }
+  ]
+}
