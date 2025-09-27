@@ -127,7 +127,16 @@ def _interp_nans(x: np.ndarray) -> np.ndarray:
         idx = np.arange(v.size)
         mask = ~np.isfinite(v)
         if mask.any():
-            v[mask] = np.interp(idx[mask], idx[~mask], v[~mask])
+            valid = ~mask
+            if not valid.any():
+                # Entire channel is invalid; fall back to zeros to avoid crashes
+                v[:] = 0.0
+            else:
+                # If only a single valid sample exists, fill the rest with that value
+                if valid.sum() == 1:
+                    v[mask] = v[valid][0]
+                else:
+                    v[mask] = np.interp(idx[mask], idx[valid], v[valid])
         x[c] = v
     return x
 

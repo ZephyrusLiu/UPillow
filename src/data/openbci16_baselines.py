@@ -23,7 +23,7 @@ def _normalize(name: str) -> str:
 
 
 def _invert_aliases(
-    aliases: Mapping[str, Sequence[str]] | None
+    aliases: Mapping[str, Sequence[str | int]] | None
 ) -> MutableMapping[str, List[str]]:
     """Merge user-provided aliases with the default canonical mapping."""
     merged: MutableMapping[str, List[str]] = {
@@ -35,19 +35,29 @@ def _invert_aliases(
         key = canonical.strip().lower()
         if key not in merged:
             merged[key] = []
-        merged[key].extend(extra)
+        merged[key].extend([str(item) for item in extra])
     return merged
 
 
 def _resolve_candidates(
     channel_names: Sequence[str],
-    candidates: Iterable[str],
+    candidates: Iterable[str | int],
 ) -> List[int]:
     """Return indices of all channels whose name matches candidates."""
     available = {_normalize(name): idx for idx, name in enumerate(channel_names)}
     resolved: List[int] = []
     for cand in candidates:
-        key = _normalize(cand)
+        if isinstance(cand, int):
+            if 0 <= cand < len(channel_names) and cand not in resolved:
+                resolved.append(cand)
+            continue
+        cand_str = str(cand)
+        if cand_str.isdigit():
+            idx = int(cand_str)
+            if 0 <= idx < len(channel_names) and idx not in resolved:
+                resolved.append(idx)
+                continue
+        key = _normalize(cand_str)
         if key in available and available[key] not in resolved:
             resolved.append(available[key])
     return resolved
@@ -64,7 +74,7 @@ def _average_channels(X: np.ndarray, indices: Sequence[int]) -> np.ndarray:
 def project_to_sleepedf_pairs(
     X: np.ndarray,
     channel_names: Sequence[str],
-    aliases: Mapping[str, Sequence[str]] | None = None,
+    aliases: Mapping[str, Sequence[str | int]] | None = None,
 ) -> Tuple[np.ndarray, Dict[str, Sequence[str]]]:
     """Project 16-channel OpenBCI signals onto Sleep-EDF style Fpz-Cz / Pz-Oz pairs.
 
@@ -76,7 +86,8 @@ def project_to_sleepedf_pairs(
         Sequence of channel labels aligned with the first dimension of ``X``.
     aliases:
         Optional mapping that augments :data:`CANONICAL_REGIONS` with project-specific
-        aliases (e.g., ``{"fpz": ["EXG0"]}``). The lookup is case-insensitive.
+        aliases (e.g., ``{"fpz": ["EXG0", 0]}``). The lookup is case-insensitive and
+        also accepts integer indices referencing ``channel_names``.
 
     Returns
     -------
