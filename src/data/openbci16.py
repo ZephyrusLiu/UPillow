@@ -1,7 +1,7 @@
 import os, re, csv, json
 import numpy as np
 from scipy.signal import butter, filtfilt, iirnotch, resample
-from typing import Tuple, Dict, Any, Optional, List, Sequence
+from typing import Tuple, Dict, Any, Optional, List, Sequence, Mapping
 
 OPENBCI_SAT_VALS = set([
     -187500.02235174447, -93750.01117587223, -8388608, 8388607
@@ -279,27 +279,54 @@ def prepare_openbci_npz(in_path: str, out_npz: str,
                         sleep_fs=100.0, sleep_win=30.0,
                         seiz_fs=200.0, seiz_win=2.0, seiz_hop=0.5,
                         band=(0.5, 40.0), notch_hz=60.0, use_car=True,
-                        virtual_map: Optional[Sequence[Dict[str, Any]]] = None) -> Dict[str, Any]:
+                        virtual_map: Optional[Sequence[Dict[str, Any]]] = None,
+                        baseline_aliases: Optional[Mapping[str, Sequence[str]]] = None) -> Dict[str, Any]:
     """Convert a single OpenBCI recording to model-ready NPZ for either 'sleep' or 'seizure' inference.
 
     When ``virtual_map`` is supplied, each entry defines a bipolar combination of
     channels ("pos" minus "neg") so that multi-channel pillow arrays can be
     projected onto two-channel layouts compatible with pretrained Sleep-EDF
     models. Channel identifiers may be integers (indices) or strings matching the
-    names parsed from the OpenBCI header.
+    names parsed from the OpenBCI header. Alternatively, ``baseline_aliases`` can
+    be provided to invoke :func:`project_to_sleepedf_pairs` for a quick Fpz-Cz /
+    Pz-Oz approximation using canonical label aliases.
     """
+    if virtual_map and baseline_aliases is not None:
+        raise ValueError("Cannot supply both virtual_map and baseline_aliases")
+
     X, fs, meta = read_openbci_any(in_path)
+    meta = meta.copy()
+
+    need_pre_z = bool(virtual_map) or (baseline_aliases is not None)
+    if need_pre_z:
+        cleaned, pre_z = clean_openbci_signals(
+            X, fs, band=band, notch_hz=notch_hz, use_car=use_car, return_pre_zscore=True
+        )
+    else:
+        cleaned = clean_openbci_signals(X, fs, band=band, notch_hz=notch_hz, use_car=use_car)
+        pre_z = None
+
     if virtual_map:
-        _, pre_z = clean_openbci_signals(X, fs, band=band, notch_hz=notch_hz,
-                                         use_car=use_car, return_pre_zscore=True)
         virt, weight_meta = build_virtual_channels(pre_z, meta.get('channel_names', []), virtual_map)
         X_proc = virt
-        meta = meta.copy()
         meta['virtual_map'] = weight_meta
         meta['source_channel_names'] = meta.get('channel_names', [])
         meta['channel_names'] = [spec.get('name', f'virtual_{i}') for i, spec in enumerate(virtual_map)]
+    elif baseline_aliases is not None:
+        from .openbci16_baselines import project_to_sleepedf_pairs
+
+        virt, baseline_meta = project_to_sleepedf_pairs(
+            pre_z, meta.get('channel_names', []), aliases=baseline_aliases
+        )
+        # final z-score for stability
+        virt = (virt - virt.mean(axis=1, keepdims=True)) / (virt.std(axis=1, keepdims=True) + 1e-8)
+        X_proc = virt.astype(np.float32)
+        meta['baseline_map'] = baseline_meta
+        meta['source_channel_names'] = meta.get('channel_names', [])
+        meta['channel_names'] = ['Fpz-Cz', 'Pz-Oz']
     else:
-        X_proc = clean_openbci_signals(X, fs, band=band, notch_hz=notch_hz, use_car=use_car)
+        X_proc = cleaned
+
     base = X_proc
     if task == "sleep":
         Xr, fr = resample_to(base, fs, sleep_fs)
