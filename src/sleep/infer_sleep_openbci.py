@@ -11,19 +11,29 @@ def main():
     ap.add_argument("--epoch", type=float, default=30.0)
     ap.add_argument("--labels", default="W,N1,N2,N3,REM")
     ap.add_argument("--virtual-map", help="Path to JSON defining virtual bipolar channels")
+    ap.add_argument("--baseline-aliases", help="Path to JSON aliases for baseline Fpz/Pz projections")
     ap.add_argument("--disable-car", action="store_true", help="Skip CAR re-referencing before virtual mapping")
     args = ap.parse_args()
 
     virtual_map = None
+    if args.virtual_map and args.baseline_aliases:
+        raise SystemExit("--virtual-map and --baseline-aliases are mutually exclusive")
     if args.virtual_map:
         with open(args.virtual_map, 'r', encoding='utf-8') as f:
             virtual_map = json.load(f)
         if isinstance(virtual_map, dict):
             # allow {"channels": [...]} style wrappers
             virtual_map = virtual_map.get('channels', virtual_map.get('virtual_map', virtual_map))
+    baseline_aliases = None
+    if args.baseline_aliases:
+        with open(args.baseline_aliases, 'r', encoding='utf-8') as f:
+            baseline_aliases = json.load(f)
+        if isinstance(baseline_aliases, dict):
+            baseline_aliases = baseline_aliases.get('aliases', baseline_aliases.get('baseline_aliases', baseline_aliases))
     info = prepare_openbci_npz(args.input, "tmp_openbci_sleep.npz",
                                task="sleep", sleep_fs=args.fs, sleep_win=args.epoch,
-                               use_car=not args.disable_car, virtual_map=virtual_map)
+                               use_car=not args.disable_car, virtual_map=virtual_map,
+                               baseline_aliases=baseline_aliases)
     npz = np.load("tmp_openbci_sleep.npz", allow_pickle=True)
     X = npz["X"]  # (N,C,T)
     in_ch = X.shape[1]; in_len = X.shape[2]

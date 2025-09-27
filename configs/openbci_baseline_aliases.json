@@ -1,0 +1,8 @@
+{
+  "aliases": {
+    "fpz": ["Fpz", "Fp1", "Fp2", "AFz", "AF3", "AF4", "EXG0", "EXG1", "EXG2", 0, 1, 2],
+    "cz": ["Cz", "CPz", "C3", "C4", "EXG6", "EXG7", "EXG12", "EXG13", 6, 7, 12, 13],
+    "pz": ["Pz", "CPz", "P3", "P4", "EXG8", "EXG9", "EXG14", 8, 9, 14],
+    "oz": ["Oz", "O1", "O2", "EXG10", "EXG11", "EXG15", 10, 11, 15]
+  }
+}
